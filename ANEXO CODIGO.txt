@@ -1,0 +1,453 @@
+#1.	Comprensión del problema y del dataset
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from sklearn.impute import KNNImputer
+from sklearn.impute import SimpleImputer
+from sklearn.model_selection import train_test_split, cross_val_score, KFold
+from sklearn.linear_model import LinearRegression
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
+data = pd.read_csv('C:/Users/HP/OneDrive - Universidad Tecnológica de Panamá/MAESTRIA EN ANALITICA DE DATOS/INTRODUCCION A CIENCIA DE DATOS/PROYECTO FINAL INTRODUCCION A CIENCIA DE DATOS/Dataset Covid19 Panama 10-05-2020.csv')
+print(data.head())
+print(data.duplicated().sum())
+#Parece no haber valores duplicados
+print(data.shape)
+
+#En total tengo 677 filas y 13 columnas
+print(data.info())
+print(data.isnull().sum())
+#En total estamos trabajando con 449 datos faltantes en 7 columnas
+# Total de datos no nulos por provincia 
+total_no_nulos_por_provincia = data.groupby('PROVINCIA').count()
+
+print(total_no_nulos_por_provincia)
+#Las provincias con mayor cantidad de valores nulos son: Los Santos, Veraguas y Chiriquí
+# Total de datos no nulos por provincia 
+total_no_nulos_por_distrito = data.groupby('DISTRITO').count()
+
+print(total_no_nulos_por_distrito)
+# Total de datos no nulos por provincia 
+total_no_nulos_por_corregimiento = data.groupby('CORREGIMIENTO').count()
+
+print(total_no_nulos_por_corregimiento)
+
+print(data.isna().sum())
+
+# Columnas con valores faltantes para imputar
+columnas_a_imputar = ['CANTIDAD', 'HOSPITALIZADO', 'AISLAMIENTO_DOMICILIARIO', 'FALLECIDO', 'UCI', 'RECUPERADO']
+
+# Seleccionamos las columnas numéricas
+data_imputar = data[columnas_a_imputar]
+
+# Imputador KNN
+imputer = KNNImputer(n_neighbors=5)
+
+# Aplicamos el KNNImputer a las columnas
+data_imputada = imputer.fit_transform(data_imputar)
+
+# Redondeamos los valores imputados
+data_imputada = np.round(data_imputada).astype(int)
+
+# Creamos un Dataframe para las columnas imputadas
+data_imputada_df = pd.DataFrame(data_imputada, columns=columnas_a_imputar)
+data[columnas_a_imputar] = data_imputada_df
+
+# Cantidad de Valores Nulos después de la Imputación
+print(data.isnull().sum())
+
+# Primeras filas del dataset
+print(data.head())
+
+# Guardar el DataFrame imputado en un archivo CSV
+data.to_csv('data_imputada.csv', index=False)
+
+#3. Feature Engineering
+
+#Mapa de Calor
+
+import seaborn as sns
+
+df = pd.read_csv('C:/Users/HP/OneDrive - Universidad Tecnológica de Panamá/MAESTRIA EN ANALITICA DE DATOS/INTRODUCCION A CIENCIA DE DATOS/PROYECTO FINAL INTRODUCCION A CIENCIA DE DATOS/data_imputada.csv')
+
+selected_columns = ['CANTIDAD', 'HOSPITALIZADO', 'AISLAMIENTO_DOMICILIARIO', 'FALLECIDO', 'UCI', 'RECUPERADO', 'LONG', 'LAT']
+
+#Matriz de Correlación
+corr_matrix = df[selected_columns].corr()
+
+#Mapa de Calor
+
+plt.figure(figsize=(10, 8))
+sns.heatmap(corr_matrix, annot=True, cmap='coolwarm', fmt='.2f')
+plt.title('Mapa de calor de las correlaciones entre variables')
+
+plt.savefig('Mapa de calor de las correlaciones entre variables.png')
+plt.show()
+
+#Generación de nuevas características
+
+# Como algunas características tienen valores de cero, añadimos un pequeño valor para evitar dividir entre cero.
+#Este valor no nos afectará significativamente los resultados
+epsilon = 1e-6
+
+#1. Ratios entre los casos:
+
+# Hospitalizados vs Fallecidos
+df['ratio_hospitalizados_fallecidos'] = df['HOSPITALIZADO'] / (df['FALLECIDO'] + epsilon)
+
+# Recuperados vs Aislados
+df['ratio_recuperados_aislados'] = df['RECUPERADO'] / (df['AISLAMIENTO_DOMICILIARIO'] + epsilon)
+
+# Hospitalizados vs Recuperados
+df['ratio_hospitalizados_recuperados'] = df['HOSPITALIZADO'] / (df['RECUPERADO'] + epsilon)
+
+#2. Relación entre las coordenadas geográficas (LONG, LAT) y la Cantidad de Casos.
+
+# Relación entre las coordenadas geográficas y la cantidad de casos
+df["DISTANCIA_CANTIDAD"] = (df['LONG'] ** 2 + df['LAT'] ** 2) ** 0.5 * df['CANTIDAD']
+
+# Mostrar las primeras filas del dataset con las nuevas características
+df.head()
+
+#Guardamos el dataset con las nuevas características
+
+df.to_csv('dataset con nuevas caracteristicas agregadas.csv', index=False)
+
+#Generamos un Dataset para Bocas del Toro
+dataframe = pd.read_csv('C:/Users/HP/OneDrive - Universidad Tecnológica de Panamá/MAESTRIA EN ANALITICA DE DATOS/INTRODUCCION A CIENCIA DE DATOS/PROYECTO FINAL INTRODUCCION A CIENCIA DE DATOS/dataset con nuevas caracteristicas agregadas.csv')
+bocas_del_toro = dataframe[dataframe['PROVINCIA'] == 'BOCAS DEL TORO']
+
+bocas_del_toro.to_csv('dataset_bocas_del_toro.csv', index=False)
+
+#Generamos un Dataset para Chiriquí
+dataframe = pd.read_csv('C:/Users/HP/OneDrive - Universidad Tecnológica de Panamá/MAESTRIA EN ANALITICA DE DATOS/INTRODUCCION A CIENCIA DE DATOS/PROYECTO FINAL INTRODUCCION A CIENCIA DE DATOS/dataset con nuevas caracteristicas agregadas.csv')
+chiriqui = dataframe[dataframe['PROVINCIA'] == 'CHIRIQUÍ']
+
+chiriqui.to_csv('dataset_chiriqui.csv', index=False)
+
+#BOCAS DEL TORO
+#PARA PODER CONSIDERAR LAS COLUMNAS DE PROVINCIA, DISTRITO Y CORREGIMIENTO 
+#COMO PARTE DE NUESTRO MODELO, DEBEMOS TRANSFORMAR SUS DATOS A NUMÉRICOS
+dfbt = pd.read_csv('C:/Users/HP/OneDrive - Universidad Tecnológica de Panamá/MAESTRIA EN ANALITICA DE DATOS/INTRODUCCION A CIENCIA DE DATOS/PROYECTO FINAL INTRODUCCION A CIENCIA DE DATOS/dataset_bocas_del_toro.csv')
+
+# Aplicamos One-Hot Encoding a las columnas categóricas 'PROVINCIA', 'DISTRITO', y 'CORREGIMIENTO'
+df_dummies = pd.get_dummies(dfbt, columns=['PROVINCIA', 'DISTRITO', 'CORREGIMIENTO'])
+
+# Guardar el nuevo dataframe en un archivo CSV
+df_dummies.to_csv('Dataset Bocas del Toro con Columnas Numéricas.csv', index=False)
+
+# Mostrar las primeras filas del dataframe procesado (opcional)
+print(df_dummies.head())
+
+#ENTRENAMIENTO DEL MODELO PARA BOCAS DEL TORO
+
+
+# Traemos el dataset para realizar el entrenamiento
+df_BT = pd.read_csv('C:/Users/HP/OneDrive - Universidad Tecnológica de Panamá/MAESTRIA EN ANALITICA DE DATOS/INTRODUCCION A CIENCIA DE DATOS/PROYECTO FINAL INTRODUCCION A CIENCIA DE DATOS/Dataset Bocas del Toro con Columnas Numéricas.csv')
+
+# DEFINIMOS NUESTRAS VARIABLES INDEPENDIENTES (X) Y NUESTRA VARIABLE OBJETIVO (Y)
+X = df_BT.drop(['CANTIDAD','GlobalID'], axis=1)  # features (características)
+y = df_BT['CANTIDAD']  # target (variable objetivo)
+
+# Dividir los datos en conjunto de entrenamiento y prueba
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# Modelo de Regresión Lineal
+model = LinearRegression()
+
+# VALIDACIÓN CRUZADA de 5-FOLDS
+k = 5
+kf = KFold(n_splits=k, shuffle=True, random_state=42)
+
+mae_scores = []
+mse_scores = []
+rmse_scores = []
+
+#Se dividen los datos en 5 folds. Se usan 4 para entrenar el modelo, y uno para probarlo. Repetimos el proceso 5 veces
+for train_index, val_index in kf.split(X_train):
+    
+    X_train_fold, X_val_fold = X_train.iloc[train_index], X_train.iloc[val_index]
+    y_train_fold, y_val_fold = y_train.iloc[train_index], y_train.iloc[val_index]
+    
+    
+    model.fit(X_train_fold, y_train_fold)
+    
+    
+    y_val_pred = model.predict(X_val_fold)
+    
+    # Métricas de error después de cada fold
+    MAE = mean_absolute_error(y_val_fold, y_val_pred)
+    MSE = mean_squared_error(y_val_fold, y_val_pred)
+    RMSE = np.sqrt(MSE)
+    
+    
+    mae_scores.append(MAE)
+    mse_scores.append(MSE)
+    rmse_scores.append(RMSE)
+
+#Resultados de la validación cruzada
+mae_scores = np.array(mae_scores)
+mse_scores = np.array(mse_scores)
+rmse_scores = np.array(rmse_scores)
+
+
+print("MAE Scores: ", mae_scores)
+print("MAE Promedio: %0.2f (+/- %0.2f)" % (mae_scores.mean(), mae_scores.std()))
+print("MSE Scores: ", mse_scores)
+print("MSE Promedio: %0.2f (+/- %0.2f)" % (mse_scores.mean(), mse_scores.std()))
+print("RMSE Scores: ", rmse_scores)
+print("RMSE Promedio: %0.2f (+/- %0.2f)" % (rmse_scores.mean(), rmse_scores.std()))
+
+# Entrenamos el modelo final de regresión lineal con los datos de entrenamiento y prueba que dividimos nosotros
+model.fit(X_train, y_train)
+
+#Predicciones para el conjunto de prueba del modelo de regresión lineal
+y_pred = model.predict(X_test)
+
+# Métricas para el conjunto de prueba
+MAE_test = mean_absolute_error(y_test, y_pred)
+MSE_test = mean_squared_error(y_test, y_pred)
+RMSE_test = np.sqrt(MSE_test)
+R2_test = r2_score(y_test, y_pred)
+
+# Resultados finales del modelo
+print("Intercept: %f, Coeficiente(s): %s" % (model.intercept_, model.coef_))
+print("MAE en el conjunto de prueba: %f" % MAE_test)
+print("MSE en el conjunto de prueba: %f" % MSE_test)
+print("RMSE en el conjunto de prueba: %f" % RMSE_test)
+print("R² en el conjunto de prueba: %f" % R2_test)
+
+# Modelo de Random Forest Regressor
+random_forest_model = RandomForestRegressor(n_estimators=100, random_state=42)
+
+# VALIDACIÓN CRUZADA de 5-FOLDS
+k = 5
+kf = KFold(n_splits=k, shuffle=True, random_state=42)
+
+
+mae_scores_rf = []
+mse_scores_rf = []
+rmse_scores_rf = []
+
+#Se dividen los datos en 5 folds. Se usan 4 para entrenar el modelo, y uno para probarlo. Repetimos el proceso 5 veces
+
+for train_index, val_index in kf.split(X_train):
+    
+    X_train_fold, X_val_fold = X_train.iloc[train_index], X_train.iloc[val_index]
+    y_train_fold, y_val_fold = y_train.iloc[train_index], y_train.iloc[val_index]
+    
+    
+    random_forest_model.fit(X_train_fold, y_train_fold)
+    
+    
+    y_val_pred_rf = random_forest_model.predict(X_val_fold)
+    
+    # Métricas de error después de cada fold
+    mae_val_rf = mean_absolute_error(y_val_fold, y_val_pred_rf)
+    mse_val_rf = mean_squared_error(y_val_fold, y_val_pred_rf)
+    rmse_val_rf = np.sqrt(mse_val_rf)
+    
+    
+    mae_scores_rf.append(mae_val_rf)
+    mse_scores_rf.append(mse_val_rf)
+    rmse_scores_rf.append(rmse_val_rf)
+
+#Resultados de la validación cruzada
+mae_scores_rf = np.array(mae_scores_rf)
+mse_scores_rf = np.array(mse_scores_rf)
+rmse_scores_rf = np.array(rmse_scores_rf)
+
+
+print("MAE Scores por fold: ", mae_scores_rf)
+print("MAE Promedio: %0.2f (+/- %0.2f)" % (mae_scores_rf.mean(), mae_scores_rf.std()))
+print("MSE Scores por fold: ", mse_scores_rf)
+print("MSE Promedio: %0.2f (+/- %0.2f)" % (mse_scores_rf.mean(), mse_scores_rf.std()))
+print("RMSE Scores por fold: ", rmse_scores_rf)
+print("RMSE Promedio: %0.2f (+/- %0.2f)" % (rmse_scores_rf.mean(), rmse_scores_rf.std()))
+
+# Entrenamos el modelo final de random forest con los datos de entrenamiento y prueba que dividimos nosotros
+
+random_forest_model.fit(X_train, y_train)
+
+#Predicciones para el conjunto de prueba del modelo de random forest
+y_pred_rf = random_forest_model.predict(X_test)
+
+# Métricas para el conjunto de prueba
+mae_rf_test = mean_absolute_error(y_test, y_pred_rf)
+mse_rf_test = mean_squared_error(y_test, y_pred_rf)
+rmse_rf_test = np.sqrt(mse_rf_test)
+r2_rf_test = r2_score(y_test, y_pred_rf)
+
+# Resultados finales del modelo
+print(f"MAE (Random Forest en conjunto de prueba): {mae_rf_test}")
+print(f"MSE (Random Forest en conjunto de prueba): {mse_rf_test}")
+print(f"RMSE (Random Forest en conjunto de prueba): {rmse_rf_test}")
+print(f"R² (Random Forest en conjunto de prueba): {r2_rf_test}")
+
+
+#CHIRIQUI
+#PARA PODER CONSIDERAR LAS COLUMNAS DE PROVINCIA, DISTRITO Y CORREGIMIENTO 
+#COMO PARTE DE NUESTRO MODELO, DEBEMOS TRANSFORMAR SUS DATOS A NUMÉRICOS
+dfbt = pd.read_csv('C:/Users/HP/OneDrive - Universidad Tecnológica de Panamá/MAESTRIA EN ANALITICA DE DATOS/INTRODUCCION A CIENCIA DE DATOS/PROYECTO FINAL INTRODUCCION A CIENCIA DE DATOS/dataset_chiriqui.csv')
+
+# Aplicamos One-Hot Encoding a las columnas categóricas 'PROVINCIA', 'DISTRITO', y 'CORREGIMIENTO'
+df_dummies = pd.get_dummies(dfbt, columns=['PROVINCIA', 'DISTRITO', 'CORREGIMIENTO'])
+
+# Guardar el nuevo dataframe en un archivo CSV
+df_dummies.to_csv('Dataset Chiriqui con Columnas Numéricas.csv', index=False)
+
+# Mostrar las primeras filas del dataframe procesado (opcional)
+print(df_dummies.head())
+
+#ENTRENAMIENTO DEL MODELO PARA CHIRIQUÍ
+
+
+# Traemos el dataset para realizar el entrenamiento
+df_BT = pd.read_csv('C:/Users/HP/OneDrive - Universidad Tecnológica de Panamá/MAESTRIA EN ANALITICA DE DATOS/INTRODUCCION A CIENCIA DE DATOS/PROYECTO FINAL INTRODUCCION A CIENCIA DE DATOS/Dataset Chiriqui con Columnas Numéricas.csv')
+
+# DEFINIMOS NUESTRAS VARIABLES INDEPENDIENTES (X) Y NUESTRA VARIABLE OBJETIVO (Y)
+X = df_BT.drop(['CANTIDAD','GlobalID'], axis=1)  # features (características)
+y = df_BT['CANTIDAD']  # target (variable objetivo)
+
+# Dividir los datos en conjunto de entrenamiento y prueba
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# Modelo de Regresión Lineal
+model = LinearRegression()
+
+# VALIDACIÓN CRUZADA de 5-FOLDS
+k = 5
+kf = KFold(n_splits=k, shuffle=True, random_state=42)
+
+mae_scores = []
+mse_scores = []
+rmse_scores = []
+
+#Se dividen los datos en 5 folds. Se usan 4 para entrenar el modelo, y uno para probarlo. Repetimos el proceso 5 veces
+
+for train_index, val_index in kf.split(X_train):
+
+    X_train_fold, X_val_fold = X_train.iloc[train_index], X_train.iloc[val_index]
+    y_train_fold, y_val_fold = y_train.iloc[train_index], y_train.iloc[val_index]
+    
+    
+    model.fit(X_train_fold, y_train_fold)
+    
+    
+    y_val_pred = model.predict(X_val_fold)
+    
+    # Métricas de error después de cada fold
+    MAE = mean_absolute_error(y_val_fold, y_val_pred)
+    MSE = mean_squared_error(y_val_fold, y_val_pred)
+    RMSE = np.sqrt(MSE)
+    
+    
+    mae_scores.append(MAE)
+    mse_scores.append(MSE)
+    rmse_scores.append(RMSE)
+
+#Resultados de la validación cruzada
+mae_scores = np.array(mae_scores)
+mse_scores = np.array(mse_scores)
+rmse_scores = np.array(rmse_scores)
+
+
+print("MAE Scores: ", mae_scores)
+print("MAE Promedio: %0.2f (+/- %0.2f)" % (mae_scores.mean(), mae_scores.std()))
+print("MSE Scores: ", mse_scores)
+print("MSE Promedio: %0.2f (+/- %0.2f)" % (mse_scores.mean(), mse_scores.std()))
+print("RMSE Scores: ", rmse_scores)
+print("RMSE Promedio: %0.2f (+/- %0.2f)" % (rmse_scores.mean(), rmse_scores.std()))
+
+# Entrenamos el modelo final de regresión lineal con los datos de entrenamiento y prueba que dividimos nosotros
+
+model.fit(X_train, y_train)
+
+#Predicciones para el conjunto de prueba del modelo de regresión lineal
+
+y_pred = model.predict(X_test)
+
+# Métricas para el conjunto de prueba
+
+MAE_test = mean_absolute_error(y_test, y_pred)
+MSE_test = mean_squared_error(y_test, y_pred)
+RMSE_test = np.sqrt(MSE_test)
+R2_test = r2_score(y_test, y_pred)
+
+# Resultados finales del modelo
+
+print("Intercept: %f, Coeficiente(s): %s" % (model.intercept_, model.coef_))
+print("MAE en el conjunto de prueba: %f" % MAE_test)
+print("MSE en el conjunto de prueba: %f" % MSE_test)
+print("RMSE en el conjunto de prueba: %f" % RMSE_test)
+print("R² en el conjunto de prueba: %f" % R2_test)
+
+
+# Modelo de Random Forest Regressor
+random_forest_model = RandomForestRegressor(n_estimators=100, random_state=42)
+
+# VALIDACIÓN CRUZADA de 5-FOLDS
+k = 5
+kf = KFold(n_splits=k, shuffle=True, random_state=42)
+
+
+mae_scores_rf = []
+mse_scores_rf = []
+rmse_scores_rf = []
+
+#Se dividen los datos en 5 folds. Se usan 4 para entrenar el modelo, y uno para probarlo. Repetimos el proceso 5 veces
+
+for train_index, val_index in kf.split(X_train):
+    
+    X_train_fold, X_val_fold = X_train.iloc[train_index], X_train.iloc[val_index]
+    y_train_fold, y_val_fold = y_train.iloc[train_index], y_train.iloc[val_index]
+    
+    
+    random_forest_model.fit(X_train_fold, y_train_fold)
+    
+    
+    y_val_pred_rf = random_forest_model.predict(X_val_fold)
+    
+    # Métricas de error después de cada fold
+    mae_val_rf = mean_absolute_error(y_val_fold, y_val_pred_rf)
+    mse_val_rf = mean_squared_error(y_val_fold, y_val_pred_rf)
+    rmse_val_rf = np.sqrt(mse_val_rf)
+    
+    
+    mae_scores_rf.append(mae_val_rf)
+    mse_scores_rf.append(mse_val_rf)
+    rmse_scores_rf.append(rmse_val_rf)
+
+#Resultados de la validación cruzada
+mae_scores_rf = np.array(mae_scores_rf)
+mse_scores_rf = np.array(mse_scores_rf)
+rmse_scores_rf = np.array(rmse_scores_rf)
+
+
+print("MAE Scores por fold: ", mae_scores_rf)
+print("MAE Promedio: %0.2f (+/- %0.2f)" % (mae_scores_rf.mean(), mae_scores_rf.std()))
+print("MSE Scores por fold: ", mse_scores_rf)
+print("MSE Promedio: %0.2f (+/- %0.2f)" % (mse_scores_rf.mean(), mse_scores_rf.std()))
+print("RMSE Scores por fold: ", rmse_scores_rf)
+print("RMSE Promedio: %0.2f (+/- %0.2f)" % (rmse_scores_rf.mean(), rmse_scores_rf.std()))
+
+# Entrenamos el modelo final de random forest con los datos de entrenamiento y prueba que dividimos nosotros
+
+random_forest_model.fit(X_train, y_train)
+
+#Predicciones para el conjunto de prueba del modelo de random forest
+
+y_pred_rf = random_forest_model.predict(X_test)
+
+# Métricas para el conjunto de prueba
+
+mae_rf_test = mean_absolute_error(y_test, y_pred_rf)
+mse_rf_test = mean_squared_error(y_test, y_pred_rf)
+rmse_rf_test = np.sqrt(mse_rf_test)
+r2_rf_test = r2_score(y_test, y_pred_rf)
+
+#Resultados finales del modelo
+print(f"MAE (Random Forest en conjunto de prueba): {mae_rf_test}")
+print(f"MSE (Random Forest en conjunto de prueba): {mse_rf_test}")
+print(f"RMSE (Random Forest en conjunto de prueba): {rmse_rf_test}")
+print(f"R² (Random Forest en conjunto de prueba): {r2_rf_test}")
